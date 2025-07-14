@@ -15,6 +15,8 @@ RUN wget -O go.tar.gz https://go.dev/dl/go1.21.0.linux-amd64.tar.gz \
     && rm go.tar.gz
 
 ENV PATH=$PATH:/usr/local/go/bin
+ENV GOPATH=/go
+ENV GOCACHE=/tmp/go-cache
 
 # 安装R包
 RUN R -e "install.packages(c('shiny', 'shinyjs', 'magick'), repos='https://cloud.r-project.org/')"
@@ -22,7 +24,13 @@ RUN R -e "install.packages(c('shiny', 'shinyjs', 'magick'), repos='https://cloud
 # 设置工作目录
 WORKDIR /app
 
-# 复制文件
+# 复制Go模块文件
+COPY go.mod go.sum ./
+
+# 下载Go依赖
+RUN go mod download
+
+# 复制应用文件
 COPY main_app.R .
 COPY gif_generator.R .
 COPY mdbk_small_vero_0713.go .
