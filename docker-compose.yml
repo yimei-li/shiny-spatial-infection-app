@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  viral-simulation:
+    build: .
+    ports:
+      - "3838:3838"
+    volumes:
+      - ./output:/srv/shiny-server/viral-sim/output
+    environment:
+      - SHINY_LOG_STDERR=1
+    restart: unless-stopped
+    
+# 使用方法：
+# 1. docker-compose build
+# 2. docker-compose up -d
+# 3. 访问 http://localhost:3838 

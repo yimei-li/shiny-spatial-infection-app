@@ -1,0 +1,22 @@
+# Simulation result directories
+*_Dinit*_*/
+
+# System files
+.DS_Store
+.Rhistory
+.RData
+.Ruserdata
+
+# Temporary files
+*.tmp
+*.log
+
+# R session files
+.Rproj.user/
+
+# Generated GIFs (will be created at runtime)
+www/animation_*.gif
+
+# Backup files
+*~
+*.bak 

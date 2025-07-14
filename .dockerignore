@@ -1,0 +1,42 @@
+# Git相关
+.git
+.gitignore
+
+# 文档文件
+README*.md
+QUICK_DEPLOY.md
+cloud_deployment_guide.md
+deployment_considerations.md
+
+# 部署相关
+deploy.sh
+deploy_setup.R
+Dockerfile*
+docker-compose*
+
+# 日志文件
+*.log
+
+# 输出文件夹
+output/
+*_Dinit*_*/
+
+# 临时文件
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+
+# IDE文件
+.vscode/
+.idea/
+*.code-workspace
+
+# R相关
+.Rhistory
+.RData
+.Ruserdata
+
+# 备份文件
+*~
+*.bak 
