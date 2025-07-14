@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     imagemagick \
     libmagick++-dev \
+    libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装Go语言
@@ -16,8 +17,8 @@ RUN wget -O go.tar.gz https://go.dev/dl/go1.21.0.linux-amd64.tar.gz \
 
 ENV PATH=$PATH:/usr/local/go/bin
 
-# 安装R包
-RUN R -e "install.packages(c('shiny', 'shinyjs'), repos='https://cloud.r-project.org/')"
+# 安装R包（提前安装所有依赖，避免运行时安装）
+RUN R -e "install.packages(c('shiny', 'shinyjs', 'magick', 'curl'), repos='https://cloud.r-project.org/', dependencies=TRUE)"
 
 # 创建应用目录
 WORKDIR /app
@@ -34,8 +35,8 @@ RUN mkdir -p www
 # 设置权限
 RUN chmod -R 755 /app
 
-# 暴露端口（云平台使用环境变量PORT）
-EXPOSE $PORT
+# 暴露端口（固定端口，Railway会自动映射）
+EXPOSE 3838
 
 # 启动命令（支持动态端口）
-CMD ["sh", "-c", "R -e \"library(shiny); shiny::runApp('main_app.R', port=as.numeric(Sys.getenv('PORT', '3838')), host='0.0.0.0')\""] 
+CMD ["R", "-e", "shiny::runApp('main_app.R', port=as.numeric(Sys.getenv('PORT', '3838')), host='0.0.0.0')"] 
