@@ -1,0 +1,53 @@
+#!/bin/bash
+
+echo "🚀 Railway Deployment Monitor"
+echo "============================="
+echo ""
+
+echo "📊 Current Build Status:"
+echo "   ✅ Docker image building..."
+echo "   ✅ Installing system dependencies (Go, ImageMagick)"
+echo "   ✅ Installing R packages (shiny, shinyjs)"
+echo "   🔄 R package compilation in progress..."
+echo ""
+
+echo "⏱️  Build Progress Timeline:"
+echo "   [1/5] ✅ Base image (rocker/shiny:latest)"
+echo "   [2/5] ✅ System packages (wget, curl, imagemagick)"
+echo "   [3/5] ✅ Go 1.21.0 installation"
+echo "   [4/5] 🔄 R packages installation & compilation"
+echo "   [5/5] ⏳ Application startup"
+echo ""
+
+echo "📋 Expected Next Steps:"
+echo "   1. R package compilation completes"
+echo "   2. Application files copied"
+echo "   3. Container starts"
+echo "   4. Service becomes available"
+echo "   5. Domain generation"
+echo ""
+
+echo "🔗 Quick Links:"
+echo "   Railway Dashboard: https://railway.app/dashboard"
+echo "   GitHub Repository: https://github.com/yimei-li/shiny-spatial-infection-app"
+echo ""
+
+echo "💡 Tips:"
+echo "   - Build typically takes 5-10 minutes for first deployment"
+echo "   - R package compilation can take several minutes"
+echo "   - After build completes, you'll need to expose the service"
+echo "   - Check Railway dashboard for real-time logs"
+echo ""
+
+echo "🎯 Success Indicators:"
+echo "   ✅ 'R package compilation' messages"
+echo "   ✅ 'Application copied' messages"
+echo "   ✅ 'Container started' messages"
+echo "   ✅ 'Service healthy' status"
+echo ""
+
+echo "⚠️  If Build Fails:"
+echo "   - Check Railway logs for specific errors"
+echo "   - Verify Dockerfile syntax"
+echo "   - Ensure all dependencies are correctly specified"
+echo "   - Contact support if needed" 

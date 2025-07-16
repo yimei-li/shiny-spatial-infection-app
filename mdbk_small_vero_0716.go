@@ -80,10 +80,9 @@ var (
 	flag_ifn_half_life    = flag.Float64("ifn_half_life", 4.0, "IFN clearance rate (e.g., 3.0 d^-1)")
 	flag_option           = flag.Int("option", 2, "Option for infection initialization (e.g., 1, 2, 3)")
 
-	flag_v_pfu_initial         = flag.Float64("v_pfu_initial", 1.0, "Initial PFU count for virions")
-	flag_d_pfu_initial         = flag.Float64("d_pfu_initial", 0.0, "Initial PFU count for DIPs")
-	flag_videotype             = flag.String("videotype", "states", "Video type: states, IFNconcentration, IFNonlyLargerThanZero, antiviralState, particles")
-	flag_dipSynthesisAdvantage = flag.Float64("dipSynthesisAdvantage", 4.0, "DIP synthesis advantage factor")
+	flag_v_pfu_initial = flag.Float64("v_pfu_initial", 1.0, "Initial PFU count for virions")
+	flag_d_pfu_initial = flag.Float64("d_pfu_initial", 0.0, "Initial PFU count for DIPs")
+	flag_videotype     = flag.String("videotype", "states", "Video type: states, IFNconcentration, IFNonlyLargerThanZero, antiviralState, particles")
 )
 
 // Particle spread related
@@ -175,6 +174,7 @@ var (
 	dip_half_life    float64 //= 0.0 // 3.2 // ~4 d^-1 => half-life ~4.2 hours
 	ifn_half_life    float64 //= 0.0 // 3.0 // ~3 d^-1 => half-life ~5.5 hours
 	videotype        string
+	dipAdvantage     float64 // DIP advantage = burstSizeD / burstSizeV
 )
 
 // Cell state definitions
@@ -1089,50 +1089,6 @@ func (g *Grid) initializeNeighbors() {
 	fmt.Println("Neighbors initialized")
 
 }
-func calculateArticleCompetition(localVirions, localDips int) (virusBurst, dipBurst int) {
-	if localVirions == 0 && localDips == 0 {
-		return 0, 0
-	}
-
-	// Special case: if there are virions but no DIPs, always produce DIPs
-	// This allows DIP generation even without initial DIP particles
-	if localVirions > 0 && localDips == 0 {
-		// Ensure we don't exceed the maximum production capacity
-		if BURST_SIZE_D > BURST_SIZE_V {
-			dipBurst = BURST_SIZE_V
-			virusBurst = 0
-		} else {
-			dipBurst = BURST_SIZE_D
-			virusBurst = BURST_SIZE_V - BURST_SIZE_D
-		}
-		return virusBurst, dipBurst
-	}
-
-	maxVirusProduction := BURST_SIZE_V // max burst size for all particles including virions and DIPs
-
-	// Based on the article: DIP is usually 20-25% of full length, so it has about 4x synthesis advantage
-	dipSynthesisAdvantage := *flag_dipSynthesisAdvantage // DIP synthesis speed is 4 times that of full length
-
-	// Calculate effective synthesis speed
-	totalParticles := localVirions + localDips
-	virusRatio := float64(localVirions) / float64(totalParticles)
-	dipRatio := float64(localDips) / float64(totalParticles)
-
-	// DIP has synthesis advantage
-	effectiveVirusSynthesis := virusRatio * 1.0
-	effectiveDipSynthesis := dipRatio * dipSynthesisAdvantage
-
-	totalEffectiveSynthesis := effectiveVirusSynthesis + effectiveDipSynthesis
-
-	if totalEffectiveSynthesis > 0 {
-		virusShare := effectiveVirusSynthesis / totalEffectiveSynthesis
-
-		virusBurst = int(float64(maxVirusProduction) * virusShare)
-		dipBurst = maxVirusProduction - virusBurst
-	}
-
-	return virusBurst, dipBurst
-}
 
 // Update the state of the grid at each time step
 func (g *Grid) update(frameNum int) {
@@ -1310,15 +1266,17 @@ func (g *Grid) update(frameNum int) {
 							///////////// for k_jumpR percent cells that jump reandomly
 							if par_celltocell_random == true {
 								// Calculate adjusted burst size for DIPs based on local ratio
-
-								adjustedBurstSizeV, adjustedBurstSizeD := calculateArticleCompetition(
-									g.localVirions[i][j],
-									g.localDips[i][j],
-								)
+								totalVirionsAtCell := g.localVirions[i][j]
+								totalDIPsAtCell := g.localDips[i][j]
+								adjustedBurstSizeD := BURST_SIZE_D
+								if totalVirionsAtCell > 0 {
+									dipVirionRatio := float64(totalDIPsAtCell) / float64(totalVirionsAtCell)
+									adjustedBurstSizeD += int(float64(BURST_SIZE_D) * dipVirionRatio)
+								}
 								//  ---------------------------------------
 								// Partition mode: split particles between random jump and cell-to-cell
-								randomVirions := int(math.Floor(float64(adjustedBurstSizeV) * k_JumpR))
-								virionsForLocalDiffusion := adjustedBurstSizeV - randomVirions
+								randomVirions := int(math.Floor(float64(BURST_SIZE_V) * k_JumpR))
+								virionsForLocalDiffusion := BURST_SIZE_V - randomVirions
 
 								randomDIPs := int(math.Floor(float64(adjustedBurstSizeD) * k_JumpR))
 								dipsForLocalDiffusion := adjustedBurstSizeD - randomDIPs
@@ -1482,20 +1440,14 @@ func (g *Grid) update(frameNum int) {
 									ratio2 := 1.0 / 2           // 2 * sqrt3 // Weight for neighbors2
 									ratio3 := 1.0 / (3 / sqrt3) // 3.0 // Weight for neighbors3
 									totalRatio := ratio1*float64(len(g.neighbors1[i][j])) + ratio2*float64(len(g.neighbors2[i][j])) + ratio3*float64(len(g.neighbors3[i][j]))
-									// Calculate adjusted burst sizes using competition function
-									adjustedBurstSizeV, adjustedBurstSizeD := calculateArticleCompetition(
-										g.localVirions[i][j],
-										g.localDips[i][j],
-									)
-
 									// if infected by virion or infected by both:
 									// Calculate the number of virions and DIPs assigned to each type of neighbor
-									virionsForNeighbors1 := int(math.Floor(float64(adjustedBurstSizeV) * (ratio1 * float64(len(g.neighbors1[i][j]))) / totalRatio))
-									virionsForNeighbors2 := int(math.Floor(float64(adjustedBurstSizeV) * (ratio2 * float64(len(g.neighbors2[i][j]))) / totalRatio))
-									virionsForNeighbors3 := int(math.Floor(float64(adjustedBurstSizeV) * (ratio3 * float64(len(g.neighbors3[i][j]))) / totalRatio))
+									virionsForNeighbors1 := int(math.Floor(float64(BURST_SIZE_V) * (ratio1 * float64(len(g.neighbors1[i][j]))) / totalRatio))
+									virionsForNeighbors2 := int(math.Floor(float64(BURST_SIZE_V) * (ratio2 * float64(len(g.neighbors2[i][j]))) / totalRatio))
+									virionsForNeighbors3 := int(math.Floor(float64(BURST_SIZE_V) * (ratio3 * float64(len(g.neighbors3[i][j]))) / totalRatio))
 
 									// Calculate the remaining virions and DIPs
-									remainingVirions := adjustedBurstSizeV - (virionsForNeighbors1 + virionsForNeighbors2 + virionsForNeighbors3)
+									remainingVirions := BURST_SIZE_V - (virionsForNeighbors1 + virionsForNeighbors2 + virionsForNeighbors3)
 
 									// // Randomly distribute the remaining virions based on the ratio
 									for remainingVirions > 0 {
@@ -1510,6 +1462,17 @@ func (g *Grid) update(frameNum int) {
 										remainingVirions--
 									}
 									// if infected by vrion only or both:
+
+									totalVirionsAtCell := g.localVirions[i][j]
+									totalDIPsAtCell := g.localDips[i][j]
+
+									// Ensure we avoid division by zero
+									adjustedBurstSizeD := 0
+									if totalVirionsAtCell > 0 {
+										// Adjust BURST_SIZE_D based on the DIP-to-virion ratio at this cell
+										dipVirionRatio := float64(totalDIPsAtCell) / float64(totalVirionsAtCell)
+										adjustedBurstSizeD = BURST_SIZE_D + int(math.Floor(float64(BURST_SIZE_D)*dipVirionRatio))
+									}
 
 									// Distribute DIPs to neighbors based on the adjusted BURST_SIZE_D
 									dipsForNeighbors1 := int(math.Floor(float64(adjustedBurstSizeD) * (ratio1 * float64(len(g.neighbors1[i][j]))) / totalRatio))
@@ -1561,12 +1524,15 @@ func (g *Grid) update(frameNum int) {
 								} else { // "Jump" case for either virions, DIPs, or both
 									fmt.Println("Virion and DIP jump are allowed to JUMP")
 									if allowVirionJump {
-										adjustedBurstSizeV, adjustedBurstSizeD := calculateArticleCompetition(
-											g.localVirions[i][j],
-											g.localDips[i][j],
-										)
+										totalVirionsAtCell := g.localVirions[i][j]
+										totalDIPsAtCell := g.localDips[i][j]
+										adjustedBurstSizeD := 0
+										if totalVirionsAtCell > 0 {
+											dipVirionRatio := float64(totalDIPsAtCell) / float64(totalVirionsAtCell)
+											adjustedBurstSizeD = BURST_SIZE_D + int(math.Floor(float64(BURST_SIZE_D)*dipVirionRatio))
+										}
 										if jumpRandomly {
-											for v := 0; v < adjustedBurstSizeV; v++ {
+											for v := 0; v < BURST_SIZE_V; v++ {
 												ni := rand.Intn(GRID_SIZE) // Randomly select a row
 												nj := rand.Intn(GRID_SIZE) // Randomly select a column
 
@@ -1584,12 +1550,17 @@ func (g *Grid) update(frameNum int) {
 											}
 										} else {
 
-											// Calculate competition-adjusted burst sizes for virions and DIPs
-											adjustedBurstSizeV, adjustedBurstSizeD := calculateArticleCompetition(g.localVirions[i][j], g.localDips[i][j])
+											totalVirionsAtCell := g.localVirions[i][j]
+											totalDIPsAtCell := g.localDips[i][j]
+											adjustedBurstSizeD := 0
+											if totalVirionsAtCell > 0 {
+												dipVirionRatio := float64(totalDIPsAtCell) / float64(totalVirionsAtCell)
+												adjustedBurstSizeD = BURST_SIZE_D + int(math.Floor(float64(BURST_SIZE_D)*dipVirionRatio))
+											}
 
 											// Virion jump logic
-											virionTargets := make([]int, adjustedBurstSizeV)
-											for v := 0; v < adjustedBurstSizeV; v++ {
+											virionTargets := make([]int, BURST_SIZE_V)
+											for v := 0; v < BURST_SIZE_V; v++ {
 												virionTargets[v] = rand.Intn(len(g.neighborsRingVirion[i][j]))
 											}
 
@@ -1632,8 +1603,13 @@ func (g *Grid) update(frameNum int) {
 									}
 
 									if allowDIPJump {
-										// Calculate competition-adjusted burst sizes for DIPs
-										_, adjustedBurstSizeD := calculateArticleCompetition(g.localVirions[i][j], g.localDips[i][j])
+										totalVirionsAtCell := g.localVirions[i][j]
+										totalDIPsAtCell := g.localDips[i][j]
+										adjustedBurstSizeD := 0
+										if totalVirionsAtCell > 0 {
+											dipVirionRatio := float64(totalDIPsAtCell) / float64(totalVirionsAtCell)
+											adjustedBurstSizeD = BURST_SIZE_D + int(math.Floor(float64(BURST_SIZE_D)*dipVirionRatio))
+										}
 
 										if jumpRandomly {
 											go func() {
@@ -2008,14 +1984,19 @@ func (g *Grid) update(frameNum int) {
 							g.lysisThreshold[i][j] = -1
 
 							if par_celltocell_random == true {
-								// Calculate competition-adjusted burst sizes for virions and DIPs
-								adjustedBurstSizeV, adjustedBurstSizeD := calculateArticleCompetition(g.localVirions[i][j], g.localDips[i][j])
-
+								// Calculate adjusted burst size for DIPs based on local ratio
+								totalVirionsAtCell := g.localVirions[i][j]
+								totalDIPsAtCell := g.localDips[i][j]
+								adjustedBurstSizeD := 0
+								if totalVirionsAtCell > 0 {
+									dipVirionRatio := float64(totalDIPsAtCell) / float64(totalVirionsAtCell)
+									adjustedBurstSizeD = BURST_SIZE_D + int(float64(BURST_SIZE_D)*dipVirionRatio)
+								}
 								//  ---------------------------------------
 								// Partition mode: split particles between random jump and cell-to-cell
 
-								randomVirions := int(math.Floor(float64(adjustedBurstSizeV) * k_JumpR))
-								virionsForLocalDiffusion := adjustedBurstSizeV - randomVirions
+								randomVirions := int(math.Floor(float64(BURST_SIZE_V) * k_JumpR))
+								virionsForLocalDiffusion := BURST_SIZE_V - randomVirions
 
 								randomDIPs := int(math.Floor(float64(adjustedBurstSizeD) * k_JumpR))
 								dipsForLocalDiffusion := adjustedBurstSizeD - randomDIPs
@@ -2175,17 +2156,14 @@ func (g *Grid) update(frameNum int) {
 									ratio3 := 1.0 / (3 / sqrt3) // 3.0 // Weight for neighbors3
 									totalRatio := ratio1*float64(len(g.neighbors1[i][j])) + ratio2*float64(len(g.neighbors2[i][j])) + ratio3*float64(len(g.neighbors3[i][j]))
 
-									// Calculate competition-adjusted burst sizes for virions and DIPs
-									adjustedBurstSizeV, adjustedBurstSizeD := calculateArticleCompetition(g.localVirions[i][j], g.localDips[i][j])
-
 									// if infected by virion or infected by both:
 									// Calculate the number of virions and DIPs assigned to each type of neighbor
-									virionsForNeighbors1 := int(math.Floor(float64(adjustedBurstSizeV) * (ratio1 * float64(len(g.neighbors1[i][j]))) / totalRatio))
-									virionsForNeighbors2 := int(math.Floor(float64(adjustedBurstSizeV) * (ratio2 * float64(len(g.neighbors2[i][j]))) / totalRatio))
-									virionsForNeighbors3 := int(math.Floor(float64(adjustedBurstSizeV) * (ratio3 * float64(len(g.neighbors3[i][j]))) / totalRatio))
+									virionsForNeighbors1 := int(math.Floor(float64(BURST_SIZE_V) * (ratio1 * float64(len(g.neighbors1[i][j]))) / totalRatio))
+									virionsForNeighbors2 := int(math.Floor(float64(BURST_SIZE_V) * (ratio2 * float64(len(g.neighbors2[i][j]))) / totalRatio))
+									virionsForNeighbors3 := int(math.Floor(float64(BURST_SIZE_V) * (ratio3 * float64(len(g.neighbors3[i][j]))) / totalRatio))
 
 									// Calculate the remaining virions and DIPs
-									remainingVirions := adjustedBurstSizeV - (virionsForNeighbors1 + virionsForNeighbors2 + virionsForNeighbors3)
+									remainingVirions := BURST_SIZE_V - (virionsForNeighbors1 + virionsForNeighbors2 + virionsForNeighbors3)
 
 									// // Randomly distribute the remaining virions based on the ratio
 									for remainingVirions > 0 {
@@ -2201,8 +2179,16 @@ func (g *Grid) update(frameNum int) {
 									}
 									// if infected by vrion only or both:
 
-									// Calculate competition-adjusted burst sizes for virions and DIPs
-									adjustedBurstSizeV, adjustedBurstSizeD = calculateArticleCompetition(g.localVirions[i][j], g.localDips[i][j])
+									totalVirionsAtCell := g.localVirions[i][j]
+									totalDIPsAtCell := g.localDips[i][j]
+
+									// Ensure we avoid division by zero
+									adjustedBurstSizeD := 0
+									if totalVirionsAtCell > 0 {
+										// Adjust BURST_SIZE_D based on the DIP-to-virion ratio at this cell
+										dipVirionRatio := float64(totalDIPsAtCell) / float64(totalVirionsAtCell)
+										adjustedBurstSizeD = BURST_SIZE_D + int(math.Floor(float64(BURST_SIZE_D)*dipVirionRatio))
+									}
 
 									// Distribute DIPs to neighbors based on the adjusted BURST_SIZE_D
 									dipsForNeighbors1 := int(math.Floor(float64(adjustedBurstSizeD) * (ratio1 * float64(len(g.neighbors1[i][j]))) / totalRatio))
@@ -2254,11 +2240,16 @@ func (g *Grid) update(frameNum int) {
 								} else { // "Jump" case for either virions, DIPs, or both
 
 									if allowVirionJump {
-										// Calculate competition-adjusted burst sizes for virions and DIPs
-										adjustedBurstSizeV, adjustedBurstSizeD := calculateArticleCompetition(g.localVirions[i][j], g.localDips[i][j])
+										totalVirionsAtCell := g.localVirions[i][j]
+										totalDIPsAtCell := g.localDips[i][j]
+										adjustedBurstSizeD := 0
+										if totalVirionsAtCell > 0 {
+											dipVirionRatio := float64(totalDIPsAtCell) / float64(totalVirionsAtCell)
+											adjustedBurstSizeD = BURST_SIZE_D + int(math.Floor(float64(BURST_SIZE_D)*dipVirionRatio))
+										}
 
 										if jumpRandomly {
-											for v := 0; v < adjustedBurstSizeV; v++ {
+											for v := 0; v < BURST_SIZE_V; v++ {
 												ni := rand.Intn(GRID_SIZE) // Randomly select a row
 												nj := rand.Intn(GRID_SIZE) // Randomly select a column
 
@@ -2276,8 +2267,8 @@ func (g *Grid) update(frameNum int) {
 											}
 										} else {
 											// Virion jump logic
-											virionTargets := make([]int, adjustedBurstSizeV)
-											for v := 0; v < adjustedBurstSizeV; v++ {
+											virionTargets := make([]int, BURST_SIZE_V)
+											for v := 0; v < BURST_SIZE_V; v++ {
 												virionTargets[v] = rand.Intn(len(g.neighborsRingVirion[i][j]))
 											}
 
@@ -2320,8 +2311,13 @@ func (g *Grid) update(frameNum int) {
 									}
 
 									if allowDIPJump {
-										// Calculate competition-adjusted burst sizes for DIPs
-										_, adjustedBurstSizeD := calculateArticleCompetition(g.localVirions[i][j], g.localDips[i][j])
+										totalVirionsAtCell := g.localVirions[i][j]
+										totalDIPsAtCell := g.localDips[i][j]
+										adjustedBurstSizeD := 0
+										if totalVirionsAtCell > 0 {
+											dipVirionRatio := float64(totalDIPsAtCell) / float64(totalVirionsAtCell)
+											adjustedBurstSizeD = BURST_SIZE_D + int(math.Floor(float64(BURST_SIZE_D)*dipVirionRatio))
+										}
 
 										if jumpRandomly {
 											go func() {
@@ -2558,6 +2554,9 @@ func (g *Grid) recordSimulationData(writer *csv.Writer, frameNum int) {
 	dipOnlyInfected := g.calculateDipOnlyInfected()
 	bothInfected := g.calculateBothInfected()
 
+	// Calculate DIP advantage = burstSizeD / burstSizeV
+	dipAdvantage = float64(BURST_SIZE_D) / float64(BURST_SIZE_V)
+
 	row := []string{
 		strconv.Itoa(frameNum),
 		strconv.FormatFloat(virion_half_life, 'f', 6, 64), // Add virion clearance rate
@@ -2627,8 +2626,9 @@ func (g *Grid) recordSimulationData(writer *csv.Writer, frameNum int) {
 		strconv.FormatFloat(ifnBothFold, 'f', 6, 64),
 		strconv.FormatFloat(D_only_IFN_stimulate_ratio, 'f', 6, 64),
 		strconv.FormatFloat(BOTH_IFN_stimulate_ratio, 'f', 6, 64),
-		strconv.Itoa(g.totalRandomJumpVirions), // New: total number of randomly jumping Virions
-		strconv.Itoa(g.totalRandomJumpDIPs),    // New: total number of randomly jumping DIPs
+		strconv.Itoa(g.totalRandomJumpVirions),        // New: total number of randomly jumping Virions
+		strconv.Itoa(g.totalRandomJumpDIPs),           // New: total number of randomly jumping DIPs
+		strconv.FormatFloat(dipAdvantage, 'f', 6, 64), // DIP advantage = burstSizeD / burstSizeV
 	}
 
 	writer.Write(row)
@@ -3204,7 +3204,7 @@ func main() {
 		"jumpRadiusV", "jumpRadiusD", "jumpRandomly", "par_celltocell_random",
 		"allowVirionJump", "allowDIPJump", "IFN_wave_radius", "ifnWave",
 		"ifnBothFold", "D_only_IFN_stimulate_ratio", "BOTH_IFN_stimulate_ratio",
-		"totalRandomJumpVirions", "totalRandomJumpDIPs",
+		"totalRandomJumpVirions", "totalRandomJumpDIPs", "dipAdvantage",
 	}
 
 	err = writer.Write(headers)

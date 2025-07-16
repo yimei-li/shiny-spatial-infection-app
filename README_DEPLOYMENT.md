@@ -116,7 +116,7 @@ cd 36_Shinny_add_video
 
 - `main_app.R` - 主应用文件
 - `gif_generator.R` - GIF生成功能
-- `mdbk_small_vero_0713.go` - Go仿真核心
+- `mdbk_small_vero_0716.go` - Go仿真核心
 - `Dockerfile` - Docker镜像配置
 - `docker-compose.yml` - Docker编排文件
 - `deploy.sh` - 一键部署脚本

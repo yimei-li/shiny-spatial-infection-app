@@ -202,8 +202,8 @@ deploy_setup.R
 # 构建阶段
 FROM golang:1.21 AS go-builder
 WORKDIR /build
-COPY mdbk_small_vero_0713.go .
-RUN go build -o simulation mdbk_small_vero_0713.go
+COPY mdbk_small_vero_0716.go .
+RUN go build -o simulation mdbk_small_vero_0716.go
 
 # 运行阶段
 FROM rocker/shiny:latest

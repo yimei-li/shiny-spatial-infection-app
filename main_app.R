@@ -672,7 +672,7 @@ server <- function(input, output, session) {
       
       # Execute Go script
       tryCatch({
-        result <- system2("go", args = c("run", "mdbk_small_vero_0713.go", go_args), 
+        result <- system2("go", args = c("run", "mdbk_small_vero_0716.go", go_args), 
                          stdout = TRUE, stderr = TRUE, wait = TRUE)
         
         if (attr(result, "status") == 0 || is.null(attr(result, "status"))) {

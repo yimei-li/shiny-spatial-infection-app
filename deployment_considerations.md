@@ -3,7 +3,7 @@
 ## 当前应用的特殊依赖
 
 ### 1. Go语言依赖
-- 应用调用 `mdbk_small_vero_0713.go`
+- 应用调用 `mdbk_small_vero_0716.go`
 - Shinyapps.io **不支持**Go语言执行
 - 需要将Go代码重写为R代码，或使用支持多语言的平台
 
